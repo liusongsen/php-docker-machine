@@ -1,0 +1,24 @@
+shipyard-rethinkdb:
+    image: 192.168.1.254:5000/rethinkdb
+
+
+shipyard-discovery:
+    image: 192.168.1.254:5000/microbox/etcd
+    command: -name discovery
+    ports:
+      - "4001:4001"
+      - "7001:7001"
+
+
+shipyard-swarm-manager:
+    image: 192.168.1.254:5000/swarm
+    command: manage --host tcp://0.0.0.0:3375 etcd://google:4001
+
+shipyard-controller:
+    image: 192.168.1.254:5000/shipyard/shipyard
+    links:
+      - shipyard-swarm-manager:swarm
+      - shipyard-rethinkdb:rethinkdb
+    command: server -d tcp://swarm:3375
+    ports:
+      - "8080:8080"

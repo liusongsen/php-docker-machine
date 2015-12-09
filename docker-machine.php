@@ -135,10 +135,10 @@ function addNoteToSwarm($project)
 
 //命令行获取要安装的模块配置
 if ($argc < 2) {
-    echo "请输入你要生成的虚拟机项目名称\n命令格式: php docker-machine.php all|framework|edu|yidejia|gjmmf|mmf\n";
+    echo "请输入你要生成的虚拟机项目名称\n命令格式: php docker-machine.php all|project1|project2\n";
     exit;
 }
-if (!in_array($argv[1], array("all", "framework", "edu", "yidejia", "gjmmf", "mmf"))) {
+if (!in_array($argv[1], array("all", "project1", "project2"))) {
     echo "请检查输入的虚拟机项目名称是否正确";
 }
 //先启动shipyard
@@ -149,7 +149,7 @@ if ($argv[1] != "all") {
     upVirtural($argv[1]);
     addNoteToSwarm($argv[1]);
 } else {
-    foreach (array("framework", "edu", "yidejia", "gjmmf", "mmf") as $v) {
+    foreach (array("project1", "project2") as $v) {
         upVirtural($v);
         addNoteToSwarm($v);
     }

@@ -5,7 +5,7 @@
  * 加入集群
  */
 
-
+$data = array();
 /**
  * 执行docker命令
  *
@@ -24,27 +24,30 @@ function execCommand($command, $env = "", $exec_command = "")
 }
 
 /**
- * 获取虚拟机列别
+ * 获取虚拟机列表
  *
  * @return array
  */
 function getVirturlList()
 {
-    $data = array();
-    $processList = execCommand("ls");
-    //加工processList
-    unset($processList[0]);
-    foreach ((array)$processList as $v) {
-        if ($v) {
-            //匹配name
-            $nameResult = preg_match("/^(\w+)/is", $v, $matchName);
-            //匹配状态
-            $stateResult = preg_match("/(Running|Stopped)/is", $v, $matchState);
-            //匹配地址
-            $ipResult = preg_match("/tcp\:\/\/(\d+\.\d+\.\d+\.\d+)/is", $v, $matchIp);
-            //组装数据
-            if ($nameResult && $stateResult) {
-                $data[$matchName[1]] = array('name' => $matchName[1], 'state' => $matchState[1], 'ip' => $ipResult ? $matchIp[1] : "");
+    global $data;
+    if (!$data) {
+        $processList = execCommand("ls");
+        //加工processList
+        unset($processList[0]);
+        //转换数据
+        foreach ((array)$processList as $v) {
+            if ($v) {
+                //匹配name
+                $nameResult = preg_match("/^(\w+)/is", $v, $matchName);
+                //匹配状态
+                $stateResult = preg_match("/(Running|Stopped)/is", $v, $matchState);
+                //匹配地址
+                $ipResult = preg_match("/tcp\:\/\/(\d+\.\d+\.\d+\.\d+)/is", $v, $matchIp);
+                //组装数据
+                if ($nameResult && $stateResult) {
+                    $data[$matchName[1]] = array('name' => $matchName[1], 'state' => $matchState[1], 'ip' => $ipResult ? $matchIp[1] : "");
+                }
             }
         }
     }
@@ -84,7 +87,7 @@ function upVirtural($project)
 function addNoteToSwarm($project)
 {
     $data = getVirturlList();
-    echo "============================" . $project . "============================";
+    echo "============================" . $project . "============================\n";
     //判断是否存在
     if (array_key_exists($project, $data) && $data[$project]['state'] == "Running") {
         //修改docker默认启动参数-屏蔽tls
@@ -111,6 +114,24 @@ function addNoteToSwarm($project)
             execCommand("ssh", $project, '\'sudo sed -i -e"s/google/' . $data['shipyard']['ip'] . '/" /home/docker/docker-compose.yml\'');
             //启动shipyard
             execCommand("ssh", $project, "'cd /home/docker && docker-compose up -d'");
+            //验证controller是否启动
+            while (true) {
+                //判断docker_shipyard_controller是否启动
+                $output = execCommand("ssh", $project, "'docker inspect docker_shipyard-controller_1'");
+                $result = @json_decode(implode("\n", $output), true);
+                if (!$result) {
+                    echo "检索不到docker_shipyard-controller运行的相关容器\n";
+                    exit;
+                }
+                //如果发现没有启动则需要重新启动
+                if ($result[0]['State']['Running']) {
+                    $result = execCommand("ssh", $project, "'sudo docker logs docker_shipyard-controller_1'");
+                    echo implode("\n", $result) . "\n";
+                    break;
+                } else {
+                    execCommand("ssh", $project, "'docker start docker_shipyard-controller_1'");
+                }
+            }
             //打印日志
             echo "http://" . $data[$project]['ip'] . ":8080\n";
             echo "账号：admin \n";
@@ -119,11 +140,21 @@ function addNoteToSwarm($project)
             //获取当前启动的容器列表
             $containers = execCommand("ssh", $project, "'docker ps -a'");
             unset($containers[0]);
-            //如果存在节点就删除该节点
-            foreach ((array)$containers as $container) {
-                if ($container && preg_match("/shipyard\-swarm\-agent/is", $container)) {
+            //判断shipyard-swarm-agent是否存在
+            $output = execCommand("ssh", $project, "'docker inspect shipyard-swarm-agent'");
+            $result = @json_decode(implode("\n", $output), true);
+            if ($result) {
+                //判断该节点加入发现服务Ip是否正确
+                if (stristr($result[0]['Args'][3], $data['shipyard']['ip'])) {
+                    //判断该节点的运行状态
+                    if ($result[0]['State']['Running']) {
+                        return true;
+                    } else {
+                        return execCommand("ssh", $project, "'docker start shipyard-swarm-agent'");
+                    }
+                } else {
+                    //强制删除
                     execCommand("ssh", $project, "'docker rm -f shipyard-swarm-agent'");
-                    break;
                 }
             }
             //重新启动
@@ -135,10 +166,10 @@ function addNoteToSwarm($project)
 
 //命令行获取要安装的模块配置
 if ($argc < 2) {
-    echo "请输入你要生成的虚拟机项目名称\n命令格式: php docker-machine.php all|project1|project2\n";
+    echo "请输入你要生成的虚拟机项目名称\n命令格式: php docker-machine.php project1|project2\n";
     exit;
 }
-if (!in_array($argv[1], array("all", "project1", "project2"))) {
+if (!in_array($argv[1], array("project1", "project2"))) {
     echo "请检查输入的虚拟机项目名称是否正确";
 }
 //先启动shipyard

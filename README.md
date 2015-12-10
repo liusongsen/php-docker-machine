@@ -18,5 +18,5 @@ php版本的docker-machine
 5: 省去了你很多时间，你不用去关注一个shipyard是如何部署的
 
 # install
-php docker-machine.php framework
+php docker-machine.php project1
 

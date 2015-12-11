@@ -91,7 +91,7 @@ function addNoteToSwarm($project)
     //判断是否存在
     if (array_key_exists($project, $data) && $data[$project]['state'] == "Running") {
         //修改docker默认启动参数-屏蔽tls
-        $output = execCommand("ssh", $project, "cat /var/lib/boot2docker/profile");
+        $output = execCommand("ssh", $project, "'cat /var/lib/boot2docker/profile'");
         if (preg_match("/DOCKER_TLS\=auto/is", implode("\n", $output))) {
             execCommand("ssh", $project, '\'sudo sed -i -e"s/DOCKER_TLS=auto/DOCKER_TLS=no/" /var/lib/boot2docker/profile\'');
         }
@@ -125,17 +125,19 @@ function addNoteToSwarm($project)
                 }
                 //如果发现没有启动则需要重新启动
                 if ($result[0]['State']['Running']) {
-                    $result = execCommand("ssh", $project, "'sudo docker logs docker_shipyard-controller_1'");
+                    echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
+                    $result = execCommand("ssh", $project, "'sudo docker logs --tail 1 docker_shipyard-controller_1'");
+                    //打印日志
                     echo implode("\n", $result) . "\n";
+                    echo "http://" . $data[$project]['ip'] . ":8080\n";
+                    echo "账号：admin \n";
+                    echo "密码：shipyard \n";
                     break;
                 } else {
                     execCommand("ssh", $project, "'docker start docker_shipyard-controller_1'");
                 }
+                sleep(1);
             }
-            //打印日志
-            echo "http://" . $data[$project]['ip'] . ":8080\n";
-            echo "账号：admin \n";
-            echo "密码：shipyard \n";
         } else {
             //获取当前启动的容器列表
             $containers = execCommand("ssh", $project, "'docker ps -a'");
@@ -171,6 +173,7 @@ if ($argc < 2) {
 }
 if (!in_array($argv[1], array("project1", "project2"))) {
     echo "请检查输入的虚拟机项目名称是否正确";
+    exit;
 }
 //先启动shipyard
 upVirtural("shipyard");

@@ -104,6 +104,16 @@ function addNoteToSwarm($project)
             execCommand("ssh", $project, "'sudo pkill docker'");
             execCommand("ssh", $project, "' sudo /etc/init.d/docker  start'");
         }
+        //验证docker是否启动完成
+        while (true) {
+            $output = execCommand("ssh", $project, "'ps -ef|grep docker'");
+            foreach ($output as $v) {
+                if (preg_match("/\/usr\/local\/bin\/docker \-d/is", $v)) {
+                    break 2;
+                }
+            }
+            sleep(1);
+        }
         //集群管理工具
         if ($project == "shipyard") {
             //安装docker-compose

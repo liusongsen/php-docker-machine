@@ -5,6 +5,7 @@
  * 一健集成管理shipyard+docker
  */
 error_reporting(E_ALL ^ E_NOTICE ^ E_DEPRECATED ^ E_WARNING);
+include "config.php";
 /**
  * 执行docker命令
  *
@@ -65,7 +66,7 @@ function upVirtural($project)
         execCommand("start", $project);
     } else {
         //for Error Timeout
-        execCommand("rm", $project);
+        array_key_exists($project, $data) && execCommand("rm", $project);
         execCommand("create --driver virtualbox", $project);
     };
     //验证virtural是否启动完成
@@ -206,6 +207,28 @@ function addNodeToSwarm($project)
 }
 
 /**
+ * 部署webserver
+ *
+ * @param string $project 项目
+ * @return mixed
+ */
+function deployWebServer($project)
+{
+    if (execCommand("ssh", $project, "'docker ps -a | grep webserver'")) {
+        execCommand("ssh", $project, "'docker restart webserver'");
+    } else {
+        //组装命令
+        $command = "'docker run -d --restart=always ";
+        $volumns[] = CODE_DIR . ":/home/www";
+        $volumns[] = NGINX_SERVERS_DIR . ":/etc/nginx/conf.d";
+        $command .= " -v " . implode(" -v ", $volumns);
+        $command .= " -p " . VIR_PORT . ":" . CONTAINER_PORT . " --name webserver 192.168.1.254:5000/library/webserver:devel '";
+        //启动webserver
+        execCommand("ssh", $project, $command);
+    }
+}
+
+/**
  * 启动项目
  *
  * @param string $project 项目名称
@@ -222,6 +245,7 @@ function startProject($project)
         shipyard();
     } else {
         addNodeToSwarm($project);
+        deployWebServer($project);
     }
 }
 
@@ -232,6 +256,19 @@ if ($argc < 2) {
 }
 if (!in_array($argv[1], array("project1", "project2"))) {
     echo "请检查输入的虚拟机项目名称是否正确";
+    exit;
+}
+//路径验证
+if (!is_dir(CODE_DIR)) {
+    echo "亲！请检查配置文件中的code目录配置是否正确\n";
+    exit;
+}
+if (!is_dir(NGINX_SERVERS_DIR)) {
+    echo "亲！请检查配置文件中的nginx server目录配置是否正确\n";
+    exit;
+}
+if (!preg_match("/\d{2,4}/is", VIR_PORT) || !preg_match("/\d{2,4}/", CONTAINER_PORT)) {
+    echo "亲！请检查配置文件中的映射端口配置是否正确\n";
     exit;
 }
 //启动

@@ -24,7 +24,7 @@ fw-compose-local
 1.克隆项目文件：
 
 ```
-git clone http://gitcafe.jingzhuan.cn/JZTECH-WEB/fw-compose-local.git
+git clone https://github.com/liusongsen/php-docker-machine.git
 
 ```
 
@@ -56,6 +56,6 @@ php docker-machine.php project
 5.修改本机host,将对应的域名改为虚拟机即可
 
 ```
-192.168.99.101  www.yidejia.com
+192.168.99.101  www.google.cn
 如何查看虚拟机的IP,进入shipyard后，点击"Node"即可查看
 ```

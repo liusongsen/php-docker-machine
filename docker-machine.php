@@ -21,9 +21,12 @@ function execCommand($command, $env = "", $exec_command = "")
     exec($result, $output);
     //写日志
     $log = "logs/log_" . date("Y-m-d") . ".log";
+    if (!file_exists($log)) {
+        touch($log);
+    }
     if (is_writable($log)) {
-        @file_put_contents($log, $result . "\n", FILE_APPEND);
-        @file_put_contents($log, print_r($output, true) . "\n", FILE_APPEND);
+        @file_put_contents($log, sprintf("%s=%s=%s", date("Y-m-d H:i:s"), $env, $result) . "\n", FILE_APPEND);
+        @file_put_contents($log, sprintf("%s=%s=%s", date("Y-m-d H:i:s"), $env, implode('\n', $result)) . "\n", FILE_APPEND);
     } else {
         echo $log . "日志文件没有写入权限\n";
     }
@@ -78,8 +81,9 @@ function upVirtural($project)
                 break 2;
             }
         }
-        if ($i > 30) {
-            echo "虚拟机启动失败(" . $project . ")\n";
+        //验证重试次数
+        if ($i > VIR_RESTART_RETRY_TIMES) {
+            echo $project . " 虚拟机启动失败(" . ($i + 1) . ")\n";
             break;
         }
         $i++;
@@ -120,8 +124,9 @@ function docker($project)
                 break 2;
             }
         }
-        if ($i > 30) {
-            echo "docker启动失败(" . $project . ")\n";
+        //验证重试次数
+        if ($i > DOCKER_RESTART_RETRY_TIMES) {
+            echo $project . " docker启动失败(" . ($i + 1) . ")\n";
             break;
         }
         $i++;
@@ -150,6 +155,7 @@ function shipyard()
     //启动shipyard
     execCommand("ssh", $project, "'cd /home/docker && docker-compose up -d'");
     //验证controller是否启动
+    $i = 0;
     while (true) {
         //判断docker_shipyard_controller是否启动
         $output = execCommand("ssh", $project, "'docker inspect docker_shipyard-controller_1'");
@@ -159,16 +165,22 @@ function shipyard()
         }
         //如果发现没有启动则需要重新启动
         if ($result[0]['State']['Running']) {
-            $result = execCommand("ssh", $project, "'sudo docker logs --tail 1 docker_shipyard-controller_1'");
+            //查看日志
+            execCommand("ssh", $project, "'sudo docker logs --tail 1 docker_shipyard-controller_1'");
             //打印日志
             echo "http://" . $data[$project]['ip'] . ":8080\n";
             echo "账号：admin \n";
             echo "密码：shipyard \n";
-            echo "日志：" . implode("\n", $result) . "\n";
             break;
         } else {
             execCommand("ssh", $project, "'docker start docker_shipyard-controller_1'");
         }
+        //验证重试次数
+        if ($i > SHIPYARD_RESTART_RETRY_TIMES) {
+            echo 'shipyard启动失败(' . ($i + 1) . ')\n';
+            break;
+        }
+        $i++;
         sleep(1);
     }
 }
@@ -194,16 +206,40 @@ function addNodeToSwarm($project)
             //判断该节点的运行状态
             if ($result[0]['State']['Running']) {
                 return true;
+            } else {
+                //重新启动
+                execCommand("ssh", $project, "'docker start shipyard-swarm-agent'");
             }
-            //重新启动
-            return execCommand("ssh", $project, "'docker start shipyard-swarm-agent'");
+        } else {
+            //删除
+            execCommand("ssh", $project, "'docker rm -f shipyard-swarm-agent'");
         }
-        //删除
-        execCommand("ssh", $project, "'docker rm -f shipyard-swarm-agent'");
     }
     //重新启动
     $command = '\'docker run -d --restart=always --name shipyard-swarm-agent 192.168.1.254:5000/swarm join --addr ' . $data[$project]["ip"] . ':2376 etcd://' . $data['shipyard']['ip'] . ':4001\'';
     execCommand("ssh", $project, $command);
+    //循环验证服务是否正确启动
+    $i = 0;
+    while (true) {
+        //判断grep shipyard-swarm-agent是否启动
+        $output = execCommand("ssh", $project, "'docker inspect grep shipyard-swarm-agent'");
+        if (!$result = @json_decode(implode("\n", $output), true)) {
+            echo "检索不到grep shipyard-swarm-agent运行的相关容器\n";
+            exit;
+        }
+        if ($result[0]['State']['Running']) {
+            break;
+        } else {
+            execCommand("ssh", $project, "'docker start shipyard-swarm-agent'");
+        }
+        //验证重试次数
+        if ($i > SHIPYARD_RESTART_RETRY_TIMES) {
+            echo "shipyard-swarm-agent启动失败(" . ($i + 1) . ")\n";
+            break;
+        }
+        $i++;
+        sleep(1);
+    }
 }
 
 /**
